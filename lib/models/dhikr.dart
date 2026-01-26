@@ -9,6 +9,7 @@ class Dhikr {
   final DhikrTime? timeOfDay;
   final String? audioPath;
   final String? reference; // المصدر (حديث، قرآن، إلخ)
+  final bool isCustom; // هل هذا الذكر مخصص من قبل المستخدم؟
 
   const Dhikr({
     required this.id,
@@ -20,6 +21,7 @@ class Dhikr {
     this.timeOfDay,
     this.audioPath,
     this.reference,
+    this.isCustom = false,
   });
 
   factory Dhikr.fromJson(Map<String, dynamic> json) {
@@ -40,6 +42,7 @@ class Dhikr {
           : null,
       audioPath: json['audioPath'] as String?,
       reference: json['reference'] as String?,
+      isCustom: json['isCustom'] as bool? ?? false,
     );
   }
 
@@ -54,6 +57,7 @@ class Dhikr {
       'timeOfDay': timeOfDay?.toString(),
       'audioPath': audioPath,
       'reference': reference,
+      'isCustom': isCustom,
     };
   }
 }
@@ -70,6 +74,7 @@ enum DhikrCategory {
   salawat, // صلوات على النبي
   tasbih, // تسبيح
   protection, // أذكار الحفظ
+  custom, // أذكار مخصصة
 }
 
 /// وقت الذكر
@@ -184,7 +189,8 @@ class DhikrData {
     ),
     const Dhikr(
       id: 'tasbih_1',
-      arabicText: 'سُبْحَانَ اللَّهِ، وَالْحَمْدُ لِلَّهِ، وَلَا إِلَهَ إِلَّا اللَّهُ، وَاللَّهُ أَكْبَرُ',
+      arabicText:
+          'سُبْحَانَ اللَّهِ، وَالْحَمْدُ لِلَّهِ، وَلَا إِلَهَ إِلَّا اللَّهُ، وَاللَّهُ أَكْبَرُ',
       translation: 'سبحان الله، والحمد لله، ولا إله إلا الله، والله أكبر',
       repetitions: 33,
       category: DhikrCategory.tasbih,

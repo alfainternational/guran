@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/reading_provider.dart';
 import '../models/quran_data.dart';
+import 'surah_reader_screen.dart';
+import 'juz_viewer_screen.dart';
 
 class ReadingScreen extends StatefulWidget {
   const ReadingScreen({super.key});
@@ -133,9 +135,13 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     ? null
                     : const Icon(Icons.arrow_forward_ios, size: 16),
                 onTap: () {
-                  setState(() {
-                    _selectedJuz = juzNumber;
-                  });
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          JuzViewerScreen(juzNumber: juzNumber),
+                    ),
+                  );
                 },
               ),
             );
@@ -216,36 +222,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
   }
 
   void _showSurahReader(Surah surah) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(surah.nameArabic),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${surah.revelationType} • ${surah.totalAyahs} آية'),
-            const SizedBox(height: 16),
-            const Text(
-              'ملاحظة: في التطبيق الكامل، سيتم عرض نص القرآن الكريم هنا',
-              style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('إغلاق'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              final provider = context.read<ReadingProvider>();
-              provider.completeSurah(surah.number);
-            },
-            child: const Text('تم القراءة'),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SurahReaderScreen(surah: surah),
       ),
     );
   }

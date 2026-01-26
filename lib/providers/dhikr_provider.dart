@@ -11,7 +11,6 @@ class DhikrProvider with ChangeNotifier {
   DhikrProgress? _progress;
   List<Dhikr> _currentDhikrList = [];
   int _currentRepetition = 0;
-  String? _currentDhikrId;
 
   DhikrProgress? get progress => _progress;
   List<Dhikr> get currentDhikrList => _currentDhikrList;
@@ -51,6 +50,30 @@ class DhikrProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  /// تحميل الأذكار المخصصة
+  Future<void> loadCustomDhikr() async {
+    final customAdhkar = await _db.getCustomAdhkar();
+    _currentDhikrList = customAdhkar;
+    notifyListeners();
+  }
+
+  /// إضافة ذكر مخصص
+  Future<void> addCustomDhikr(Dhikr dhikr) async {
+    await _db.saveCustomDhikr(dhikr);
+    // إذا كنا في صفحة الأذكار المخصصة، نعيد التحميل
+    if (_currentDhikrList.isNotEmpty && _currentDhikrList.first.isCustom) {
+      await loadCustomDhikr();
+    }
+  }
+
+  /// حذف ذكر مخصص
+  Future<void> deleteCustomDhikr(String id) async {
+    await _db.deleteCustomDhikr(id);
+    if (_currentDhikrList.isNotEmpty && _currentDhikrList.first.isCustom) {
+      await loadCustomDhikr();
+    }
+  }
+
   /// تحميل أذكار عامة
   void loadGeneralAdhkar() {
     _currentDhikrList = DhikrData.generalAdhkar;
@@ -59,7 +82,6 @@ class DhikrProvider with ChangeNotifier {
 
   /// بدء ذكر جديد
   void startDhikr(String dhikrId) {
-    _currentDhikrId = dhikrId;
     _currentRepetition = 0;
     notifyListeners();
   }
@@ -84,7 +106,6 @@ class DhikrProvider with ChangeNotifier {
     await _db.saveDhikrProgress(_progress!);
 
     _currentRepetition = 0;
-    _currentDhikrId = null;
 
     notifyListeners();
 
@@ -126,8 +147,9 @@ class DhikrProvider with ChangeNotifier {
   /// الحصول على نسبة إكمال أذكار الصباح
   double getMorningAdhkarProgress() {
     final total = DhikrData.morningAdhkar.length;
-    final completed =
-        DhikrData.morningAdhkar.where((d) => isDhikrCompletedToday(d.id)).length;
+    final completed = DhikrData.morningAdhkar
+        .where((d) => isDhikrCompletedToday(d.id))
+        .length;
 
     return total > 0 ? completed / total : 0.0;
   }
@@ -135,8 +157,9 @@ class DhikrProvider with ChangeNotifier {
   /// الحصول على نسبة إكمال أذكار المساء
   double getEveningAdhkarProgress() {
     final total = DhikrData.eveningAdhkar.length;
-    final completed =
-        DhikrData.eveningAdhkar.where((d) => isDhikrCompletedToday(d.id)).length;
+    final completed = DhikrData.eveningAdhkar
+        .where((d) => isDhikrCompletedToday(d.id))
+        .length;
 
     return total > 0 ? completed / total : 0.0;
   }
@@ -144,7 +167,6 @@ class DhikrProvider with ChangeNotifier {
   /// إعادة تعيين الذكر الحالي
   void resetCurrent() {
     _currentRepetition = 0;
-    _currentDhikrId = null;
     notifyListeners();
   }
 }

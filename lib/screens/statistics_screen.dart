@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/reading_provider.dart';
 import '../providers/dhikr_provider.dart';
+import '../providers/profile_provider.dart';
+import '../models/medal.dart';
 
 class StatisticsScreen extends StatelessWidget {
   const StatisticsScreen({super.key});
@@ -128,7 +130,8 @@ class StatisticsScreen extends StatelessWidget {
                     GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 6,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
@@ -316,66 +319,39 @@ class StatisticsScreen extends StatelessWidget {
   }
 
   Widget _buildAchievements() {
-    return Consumer<ReadingProvider>(
-      builder: (context, provider, _) {
-        final progress = provider.userProgress;
-
-        final achievements = [
-          _Achievement(
-            title: 'البداية',
-            description: 'ابدأ أول جلسة قراءة',
-            isUnlocked: (progress?.totalAyahsRead ?? 0) > 0,
-            icon: Icons.play_arrow,
-          ),
-          _Achievement(
-            title: 'الملتزم',
-            description: 'اقرأ لمدة 7 أيام متتالية',
-            isUnlocked: (progress?.currentStreak ?? 0) >= 7,
-            icon: Icons.calendar_today,
-          ),
-          _Achievement(
-            title: 'المثابر',
-            description: 'اقرأ لمدة 30 يوماً متتالية',
-            isUnlocked: (progress?.currentStreak ?? 0) >= 30,
-            icon: Icons.local_fire_department,
-          ),
-          _Achievement(
-            title: 'نصف الطريق',
-            description: 'أكمل 15 جزءاً',
-            isUnlocked: (progress?.completedJuzs.length ?? 0) >= 15,
-            icon: Icons.star_half,
-          ),
-          _Achievement(
-            title: 'الختمة',
-            description: 'أكمل القرآن الكريم كاملاً',
-            isUnlocked: (progress?.completedJuzs.length ?? 0) == 30,
-            icon: Icons.emoji_events,
-          ),
-        ];
+    return Consumer2<ReadingProvider, ProfileProvider>(
+      builder: (context, readingProvider, profileProvider, _) {
+        final profile = profileProvider.profile;
+        final allMedals = MedalService.getInitialMedals();
 
         return Column(
-          children: achievements.map((achievement) {
+          children: allMedals.map((medal) {
+            final isUnlocked =
+                profile?.unlockedMedalIds.contains(medal.id) ?? false;
+
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: achievement.isUnlocked
-                      ? const Color(0xFF1B5E20)
-                      : Colors.grey[300],
+                  backgroundColor: isUnlocked
+                      ? MedalService.getTierColor(medal.tier).withOpacity(0.2)
+                      : Colors.grey[200],
                   child: Icon(
-                    achievement.icon,
-                    color: achievement.isUnlocked ? Colors.white : Colors.grey,
+                    medal.icon,
+                    color: isUnlocked
+                        ? MedalService.getTierColor(medal.tier)
+                        : Colors.grey,
                   ),
                 ),
                 title: Text(
-                  achievement.title,
+                  medal.title,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: achievement.isUnlocked ? Colors.black : Colors.grey,
+                    color: isUnlocked ? Colors.black : Colors.grey,
                   ),
                 ),
-                subtitle: Text(achievement.description),
-                trailing: achievement.isUnlocked
+                subtitle: Text(medal.description),
+                trailing: isUnlocked
                     ? const Icon(Icons.check_circle, color: Colors.green)
                     : const Icon(Icons.lock_outline, color: Colors.grey),
               ),
@@ -385,18 +361,4 @@ class StatisticsScreen extends StatelessWidget {
       },
     );
   }
-}
-
-class _Achievement {
-  final String title;
-  final String description;
-  final bool isUnlocked;
-  final IconData icon;
-
-  _Achievement({
-    required this.title,
-    required this.description,
-    required this.isUnlocked,
-    required this.icon,
-  });
 }

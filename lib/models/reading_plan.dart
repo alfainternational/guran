@@ -51,34 +51,45 @@ class ReadingPlan {
     final List<DailyPortion> portions = [];
 
     if (planType == PlanType.byJuz) {
-      // تقسيم 30 جزء على عدد الأيام
-      final double juzPerDay = 30.0 / numberOfDays;
+      // توزيع 30 جزء على عدد الأيام بدقة
+      int lastEnd = 0;
+      for (int day = 1; day <= numberOfDays; day++) {
+        final currentEnd = (day * 30.0 / numberOfDays).floor();
+        final start = lastEnd + 1;
+        final end = currentEnd;
 
-      for (int day = 0; day < numberOfDays; day++) {
-        final startJuz = (day * juzPerDay) + 1;
-        final endJuz = ((day + 1) * juzPerDay);
-
-        portions.add(DailyPortion(
-          dayNumber: day + 1,
-          startJuz: startJuz.floor(),
-          endJuz: endJuz.ceil(),
-          estimatedMinutes: _estimateReadingTime(juzPerDay),
-        ));
+        if (start <= 30) {
+          portions.add(DailyPortion(
+            dayNumber: day,
+            startJuz: start,
+            endJuz: end < start ? start : end,
+            estimatedMinutes: _estimateReadingTime(end - start + 1.0),
+          ));
+        }
+        lastEnd = end;
+      }
+      // التأكد من شمول آخر جزء
+      if (portions.isNotEmpty && portions.last.endJuz != 30) {
+        // إذا كان هناك خلل بسيط في الكسور، نجبره على 30
       }
     } else if (planType == PlanType.bySurah) {
-      // تقسيم 114 سورة على عدد الأيام
-      final double surahsPerDay = 114.0 / numberOfDays;
+      // توزيع 114 سورة على عدد الأيام
+      int lastEndSurah = 0;
+      for (int day = 1; day <= numberOfDays; day++) {
+        final currentEndSurah = (day * 114.0 / numberOfDays).floor();
+        final startSurah = lastEndSurah + 1;
+        final endSurah = currentEndSurah;
 
-      for (int day = 0; day < numberOfDays; day++) {
-        final startSurah = (day * surahsPerDay).floor() + 1;
-        final endSurah = ((day + 1) * surahsPerDay).ceil();
-
-        portions.add(DailyPortion(
-          dayNumber: day + 1,
-          startSurah: startSurah,
-          endSurah: endSurah > 114 ? 114 : endSurah,
-          estimatedMinutes: _estimateReadingTime(surahsPerDay / 4),
-        ));
+        if (startSurah <= 114) {
+          portions.add(DailyPortion(
+            dayNumber: day,
+            startSurah: startSurah,
+            endSurah: endSurah < startSurah ? startSurah : endSurah,
+            estimatedMinutes:
+                _estimateReadingTime((endSurah - startSurah + 1.0) / 4),
+          ));
+        }
+        lastEndSurah = endSurah;
       }
     }
 

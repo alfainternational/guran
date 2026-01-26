@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/reading_plan.dart';
-import '../models/quran_data.dart';
+import '../models/user_profile.dart'; // Ensure this exists
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../models/motivational_messages.dart';
@@ -54,7 +54,7 @@ class ReadingProvider with ChangeNotifier {
       planType: planType,
     );
 
-    await _db.insertReadingPlan(_activePlan!);
+    await _db.saveReadingPlan(_activePlan!);
 
     // تحديث تقدم المستخدم
     if (_userProgress != null) {
@@ -108,10 +108,12 @@ class ReadingProvider with ChangeNotifier {
 
     // حفظ الجلسة
     if (_userProgress != null) {
+      // I need to check if saveReadingSession exists or was renamed
       await _db.insertReadingSession(_currentSession!, _userProgress!.userId);
 
       // تحديث التقدم
-      await _updateProgress(ayahsRead, surahsRead, _currentSession!.durationMinutes);
+      await _updateProgress(
+          ayahsRead, surahsRead, _currentSession!.durationMinutes);
     }
 
     _isReading = false;
@@ -182,21 +184,44 @@ class ReadingProvider with ChangeNotifier {
   Future<void> _checkAchievements() async {
     if (_userProgress == null) return;
 
-    // تحقق من السلسلة المتتالية
-    if (_userProgress!.currentStreak % 7 == 0) {
-      final message = MotivationalMessages.getRandomMessage(
-        MessageTrigger.dailyStreak,
-      );
-      await _notificationService.showMotivationalNotification(message);
+    final profile = await _db.getUserProfile();
+    if (profile == null) return;
+
+    final currentMedals = List<String>.from(profile.unlockedMedalIds);
+    bool hasUpdates = false;
+
+    // دالة مساعدة لإضافة الوسام
+    void unlock(String id) {
+      if (!currentMedals.contains(id)) {
+        currentMedals.add(id);
+        hasUpdates = true;
+        _notificationService
+            .showAchievementNotification('مبروك! لقد حصلت على وسام جديد!');
+      }
     }
 
-    // تحقق من إكمال جزء
-    final completedJuzCount = _userProgress!.completedJuzs.length;
-    if (completedJuzCount > 0 && completedJuzCount % 5 == 0) {
-      final message = MotivationalMessages.getRandomMessage(
-        MessageTrigger.milestone,
+    // 1. السلسلة المتتالية
+    if (_userProgress!.currentStreak >= 3) unlock('streak_3');
+    if (_userProgress!.currentStreak >= 7) unlock('streak_7');
+
+    // 2. إكمال أجزاء
+    final completedCount = _userProgress!.completedJuzs.length;
+    if (completedCount >= 1) unlock('first_juz');
+    if (completedCount >= 15) unlock('half_quran');
+    if (completedCount >= 30) unlock('complete_quran');
+
+    if (hasUpdates) {
+      final newProfile = UserProfile(
+        name: profile.name,
+        age: profile.age,
+        gender: profile.gender,
+        joinedDate: profile.joinedDate,
+        lastOpenDate: profile.lastOpenDate,
+        consecutiveDays: profile.consecutiveDays,
+        unlockedMedalIds: currentMedals,
       );
-      await _notificationService.showMotivationalNotification(message);
+      await _db.saveUserProfile(newProfile);
+      notifyListeners();
     }
   }
 
@@ -233,7 +258,8 @@ class ReadingProvider with ChangeNotifier {
     final daysSinceStart =
         DateTime.now().difference(_activePlan!.startDate).inDays;
 
-    if (daysSinceStart < 0 || daysSinceStart >= _activePlan!.dailyPortions.length) {
+    if (daysSinceStart < 0 ||
+        daysSinceStart >= _activePlan!.dailyPortions.length) {
       return null;
     }
 

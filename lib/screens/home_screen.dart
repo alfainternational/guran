@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/reading_provider.dart';
 import '../providers/dhikr_provider.dart';
+import '../providers/profile_provider.dart';
+import '../models/user_profile.dart';
 import '../models/motivational_messages.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,22 +23,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initializeData() async {
     final readingProvider = context.read<ReadingProvider>();
     final dhikrProvider = context.read<DhikrProvider>();
+    final profileProvider = context.read<ProfileProvider>();
 
     await readingProvider.loadActivePlan();
     await readingProvider.loadUserProgress('user_001');
     await dhikrProvider.loadProgress('user_001');
+    await profileProvider.loadProfile();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('قُرآن'),
+        title: const Text('ختمتي'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: 'الملف الشخصي',
+            onPressed: _showProfileDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              // الذهاب للإعدادات
+              Navigator.pushNamed(context, '/settings');
             },
           ),
         ],
@@ -74,49 +83,169 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildWelcomeCard() {
-    final now = DateTime.now();
-    final hour = now.hour;
+  void _showProfileDialog() {
+    final profileProvider = context.read<ProfileProvider>();
+    final nameController =
+        TextEditingController(text: profileProvider.profile?.name ?? '');
+    final ageController = TextEditingController(
+        text: profileProvider.profile?.age.toString() ?? '');
+    Gender selectedGender = profileProvider.profile?.gender ?? Gender.male;
 
-    String greeting;
-    if (hour < 12) {
-      greeting = 'صباح الخير';
-    } else if (hour < 18) {
-      greeting = 'مساء الخير';
-    } else {
-      greeting = 'مساء الخير';
-    }
-
-    final message = MotivationalMessages.getRandomMessage(
-      MessageTrigger.appOpen,
-    );
-
-    return Card(
-      color: const Color(0xFF1B5E20),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              greeting,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('الملف الشخصي'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'الاسم'),
+                ),
+                TextField(
+                  controller: ageController,
+                  decoration: const InputDecoration(labelText: 'العمر'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 16),
+                const Text('الجنس'),
+                Row(
+                  children: [
+                    Radio<Gender>(
+                      value: Gender.male,
+                      groupValue: selectedGender,
+                      onChanged: (v) =>
+                          setDialogState(() => selectedGender = v!),
+                    ),
+                    const Text('ذكر'),
+                    Radio<Gender>(
+                      value: Gender.female,
+                      groupValue: selectedGender,
+                      onChanged: (v) =>
+                          setDialogState(() => selectedGender = v!),
+                    ),
+                    const Text('أنثى'),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              message.arabicText,
-              style: const TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('إلغاء')),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.isNotEmpty) {
+                  profileProvider.saveProfile(UserProfile(
+                    name: nameController.text,
+                    age: int.tryParse(ageController.text) ?? 0,
+                    gender: selectedGender,
+                  ));
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('حفظ'),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildWelcomeCard() {
+    return Consumer<ProfileProvider>(
+      builder: (context, provider, _) {
+        final profile = provider.profile;
+        if (profile == null) return const SizedBox.shrink();
+
+        final now = DateTime.now();
+        final hour = now.hour;
+
+        String dayGreeting;
+        if (hour < 12) {
+          dayGreeting = 'صباح الخير والبركة';
+        } else if (hour < 17) {
+          dayGreeting = 'مساء الخير والسرور';
+        } else {
+          dayGreeting = 'طاب مساؤك بذكر الله';
+        }
+
+        final message =
+            MotivationalMessages.getRandomMessage(MessageTrigger.appOpen);
+
+        return Card(
+          elevation: 4,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              gradient: LinearGradient(
+                colors: [const Color(0xFF1B5E20), Colors.green[800]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$dayGreeting، ${profile.name} ✨',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.whatshot,
+                                color: Colors.orange, size: 18),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${profile.consecutiveDays} يوم',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    message.arabicText,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.white70,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -192,7 +321,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.check_circle, color: Colors.green[700], size: 16),
+                            Icon(Icons.check_circle,
+                                color: Colors.green[700], size: 16),
                             const SizedBox(width: 4),
                             Text(
                               'مكتمل',

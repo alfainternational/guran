@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/dhikr_provider.dart';
 import '../models/dhikr.dart';
+import '../widgets/dhikr_tracker_dialog.dart';
 
 class DhikrScreen extends StatefulWidget {
   const DhikrScreen({super.key});
@@ -12,39 +13,67 @@ class DhikrScreen extends StatefulWidget {
 
 class _DhikrScreenState extends State<DhikrScreen> {
   @override
+  void initState() {
+    super.initState();
+    // تحميل الأذكار المخصصة عند البدء
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<DhikrProvider>(context, listen: false).loadCustomDhikr();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('الأذكار'),
-      ),
-      body: DefaultTabController(
-        length: 3,
-        child: Column(
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('الأذكار'),
+          bottom: const TabBar(
+            isScrollable: true,
+            labelColor: Colors.white,
+            tabs: [
+              Tab(text: 'الصباح'),
+              Tab(text: 'المساء'),
+              Tab(text: 'عامة'),
+              Tab(text: 'مخصص'),
+            ],
+          ),
+        ),
+        body: TabBarView(
           children: [
-            const TabBar(
-              labelColor: Color(0xFF1B5E20),
-              tabs: [
-                Tab(text: 'الصباح'),
-                Tab(text: 'المساء'),
-                Tab(text: 'عامة'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildDhikrList(DhikrData.morningAdhkar),
-                  _buildDhikrList(DhikrData.eveningAdhkar),
-                  _buildDhikrList(DhikrData.generalAdhkar),
-                ],
-              ),
-            ),
+            _buildDhikrList(DhikrData.morningAdhkar),
+            _buildDhikrList(DhikrData.eveningAdhkar),
+            _buildDhikrList(DhikrData.generalAdhkar),
+            _buildCustomDhikrList(),
           ],
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: _showAddDhikrDialog,
+          child: const Icon(Icons.add),
         ),
       ),
     );
   }
 
-  Widget _buildDhikrList(List<Dhikr> adhkar) {
+  Widget _buildCustomDhikrList() {
+    return Consumer<DhikrProvider>(
+      builder: (context, provider, _) {
+        final customAdhkar =
+            provider.currentDhikrList.where((d) => d.isCustom).toList();
+
+        if (customAdhkar.isEmpty) {
+          return const Center(
+            child: Text(
+                'لا توجد أذكار مخصصة حالياً.\nاضغط على + لإضافة ذكر جديد.'),
+          );
+        }
+
+        return _buildDhikrList(customAdhkar, isCustom: true);
+      },
+    );
+  }
+
+  Widget _buildDhikrList(List<Dhikr> adhkar, {bool isCustom = false}) {
     return Consumer<DhikrProvider>(
       builder: (context, provider, _) {
         return ListView.builder(
@@ -56,87 +85,145 @@ class _DhikrScreenState extends State<DhikrScreen> {
 
             return Card(
               margin: const EdgeInsets.only(bottom: 16),
-              child: InkWell(
+              child: ListTile(
                 onTap: () => _showDhikrDetail(dhikr),
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              dhikr.arabicText,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                height: 1.8,
-                              ),
-                            ),
-                          ),
-                          if (isCompleted)
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.green[100],
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.check,
-                                color: Colors.green[700],
-                                size: 20,
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (dhikr.translation != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          dhikr.translation!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                      if (dhikr.repetitions != null) ...[
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            const Icon(Icons.repeat, size: 16),
-                            const SizedBox(width: 4),
-                            Text(
-                              'التكرار: ${dhikr.repetitions} مرة',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1B5E20),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (dhikr.reference != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'المصدر: ${dhikr.reference}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ],
+                title: Text(
+                  dhikr.arabicText,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    height: 1.8,
                   ),
+                ),
+                subtitle: dhikr.translation != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            dhikr.translation!,
+                            style: const TextStyle(
+                                fontSize: 14, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${dhikr.repetitions} مرات',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.green[700],
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        '${dhikr.repetitions} مرات',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isCompleted)
+                      const Icon(Icons.check_circle, color: Colors.green),
+                    if (isCustom)
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => _confirmDelete(dhikr.id),
+                      ),
+                    const Icon(Icons.arrow_forward_ios,
+                        size: 14, color: Colors.grey),
+                  ],
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  void _confirmDelete(String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف الذكر'),
+        content: const Text('هل أنت متأكد من حذف هذا الذكر؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              Provider.of<DhikrProvider>(context, listen: false)
+                  .deleteCustomDhikr(id);
+              Navigator.pop(context);
+            },
+            child: const Text('حذف', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddDhikrDialog() {
+    final textController = TextEditingController();
+    final countController = TextEditingController(text: '33');
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('إضافة ذكر جديد'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: textController,
+              decoration: const InputDecoration(
+                labelText: 'نص الذكر',
+                hintText: 'مثال: سبحان الله وبحمده',
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: countController,
+              decoration:
+                  const InputDecoration(labelText: 'عدد المرات (اختياري)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1B5E20),
+            ),
+            onPressed: () {
+              if (textController.text.trim().isNotEmpty) {
+                final newDhikr = Dhikr(
+                  id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+                  arabicText: textController.text.trim(),
+                  repetitions: int.tryParse(countController.text) ?? 1,
+                  category: DhikrCategory.custom,
+                  isCustom: true,
+                );
+                Provider.of<DhikrProvider>(context, listen: false)
+                    .addCustomDhikr(newDhikr);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('إضافة', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -273,7 +360,7 @@ class _DhikrDetailSheetState extends State<_DhikrDetailSheet> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -297,17 +384,40 @@ class _DhikrDetailSheetState extends State<_DhikrDetailSheet> {
 
               const SizedBox(height: 16),
 
-              // زر إعادة التعيين
-              if (_counter > 0)
-                TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _counter = 0;
-                    });
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('إعادة'),
-                ),
+              const SizedBox(height: 16),
+
+              // زر إعادة التعيين وتتبع التقدم
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  if (_counter > 0)
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _counter = 0;
+                        });
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('إعادة'),
+                    ),
+                  TextButton.icon(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => DhikrTrackerDialog(
+                          dhikrId: widget.dhikr.id,
+                          dhikrName: widget.dhikr.arabicText,
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.alarm_add),
+                    label: const Text('تذكيري'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF1B5E20),
+                    ),
+                  ),
+                ],
+              ),
 
               const SizedBox(height: 16),
             ],

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/motivational_messages.dart';
 import 'notification_service.dart';
+import 'package:usage_stats/usage_stats.dart';
 
 /// معلومات استخدام التطبيق
 class AppUsageInfo {
@@ -127,29 +128,33 @@ class AppUsageService {
 
   /// الحصول على استخدام اليوم
   Future<List<AppUsageInfo>> getTodayUsage() async {
-    // ملاحظة: هذه دالة نموذجية
-    // في التطبيق الحقيقي، ستستخدم مكتبة app_usage أو usage_stats
-    // لجلب البيانات الفعلية
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return [];
+    }
 
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
 
-    // هنا يجب استخدام مكتبة app_usage للحصول على البيانات الفعلية
-    // مثال:
-    /*
-    AppUsage appUsage = AppUsage();
-    List<AppUsageInfo> infos = await appUsage.getAppUsage(startOfDay, now);
-    return infos;
-    */
+    final List<dynamic> stats =
+        await UsageStats.queryUsageStats(startOfDay, now);
 
-    // للتوضيح، نعيد قائمة فارغة
-    return [];
+    return stats.map((info) {
+      final usageMs = int.tryParse(info.totalTimeInForeground ?? '0') ?? 0;
+      return AppUsageInfo(
+        packageName: info.packageName ?? '',
+        appName: info.packageName?.split('.').last ?? 'Unknown',
+        usageTimeMinutes: (usageMs / 60000).round(),
+        openCount: 0,
+        date: now,
+      );
+    }).toList();
   }
 
   /// حساب إجمالي وقت الشاشة اليوم
   Future<int> getTotalScreenTimeToday() async {
     final usageToday = await getTodayUsage();
-    return usageToday.fold(0, (sum, usage) => sum + usage.usageTimeMinutes);
+    return usageToday.fold<int>(
+        0, (sum, usage) => sum + usage.usageTimeMinutes);
   }
 
   /// حساب وقت استخدام وسائل التواصل الاجتماعي
@@ -157,7 +162,7 @@ class AppUsageService {
     final usageToday = await getTodayUsage();
     return usageToday
         .where((usage) => socialMediaApps.contains(usage.packageName))
-        .fold(0, (sum, usage) => sum + usage.usageTimeMinutes);
+        .fold<int>(0, (sum, usage) => sum + usage.usageTimeMinutes);
   }
 
   /// اقتراح وقت مخصص للقراءة بناءً على الاستخدام

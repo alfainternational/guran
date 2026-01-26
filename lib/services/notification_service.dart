@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/motivational_messages.dart';
@@ -19,7 +21,8 @@ class NotificationService {
 
     tz.initializeTimeZones();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -46,11 +49,22 @@ class NotificationService {
 
   /// طلب أذونات الإشعارات
   Future<bool> requestPermissions() async {
-    final androidPlugin = _notifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final androidPlugin =
+          _notifications.resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
 
-    final granted = await androidPlugin?.requestNotificationsPermission();
-    return granted ?? false;
+      // طلب إذن الإشعارات لأندرويد 13+
+      await androidPlugin?.requestNotificationsPermission();
+
+      // التحقق وطلب إذن التنبيهات الدقيقة لأندرويد 12+
+      if (await Permission.scheduleExactAlarm.isDenied) {
+        await Permission.scheduleExactAlarm.request();
+      }
+
+      return await Permission.notification.isGranted;
+    }
+    return true;
   }
 
   /// إرسال إشعار فوري
@@ -93,6 +107,15 @@ class NotificationService {
     );
   }
 
+  /// إشعار إنجاز
+  Future<void> showAchievementNotification(String message) async {
+    await showNotification(
+      id: message.hashCode,
+      title: '🏆 إنجاز جديد',
+      body: message,
+    );
+  }
+
   /// إشعار تذكير بالقراءة
   Future<void> showReadingReminder({
     required String portion,
@@ -125,36 +148,56 @@ class NotificationService {
     required DateTime scheduledTime,
     String? payload,
   }) async {
-    const androidDetails = AndroidNotificationDetails(
-      'guran_scheduled',
-      'Scheduled Notifications',
-      channelDescription: 'الإشعارات المجدولة',
-      importance: Importance.high,
-      priority: Priority.high,
-    );
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        'guran_scheduled',
+        'Scheduled Notifications',
+        channelDescription: 'الإشعارات المجدولة',
+        importance: Importance.high,
+        priority: Priority.high,
+      );
 
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
+      const iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
 
-    const details = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
+      const details = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
 
-    await _notifications.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(scheduledTime, tz.local),
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: payload,
-    );
+      await _notifications.zonedSchedule(
+        id,
+        title,
+        body,
+        tz.TZDateTime.from(scheduledTime, tz.local),
+        details,
+        androidScheduleMode: await _getScheduleMode(),
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: payload,
+      );
+    } catch (e) {
+      debugPrint('خطأ في جدولة الإشعار: $e');
+      // في حالة الفشل، نعرض إشعاراً فورياً بدلاً من الجدولة
+      await showNotification(
+        id: id,
+        title: title,
+        body: body,
+        payload: payload,
+      );
+    }
+  }
+
+  Future<AndroidScheduleMode> _getScheduleMode() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (await Permission.scheduleExactAlarm.isGranted) {
+        return AndroidScheduleMode.exactAllowWhileIdle;
+      }
+    }
+    return AndroidScheduleMode.inexactAllowWhileIdle;
   }
 
   /// جدولة إشعار يومي
@@ -248,5 +291,78 @@ class NotificationService {
   /// الحصول على الإشعارات المعلقة
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
     return await _notifications.pendingNotificationRequests();
+  }
+
+  /// تنبيه مواقيت الصلاة
+  Future<void> schedulePrayerNotification({
+    required String prayerName,
+    required DateTime prayerTime,
+    int minutesBefore = 15,
+  }) async {
+    final notificationTime =
+        prayerTime.subtract(Duration(minutes: minutesBefore));
+
+    if (notificationTime.isBefore(DateTime.now())) return;
+
+    await scheduleNotification(
+      id: prayerName.hashCode,
+      title: '🕌 حان وقت صلاة $prayerName',
+      body: 'بعد $minutesBefore دقيقة',
+      scheduledTime: notificationTime,
+    );
+  }
+
+  /// تنبيه تتبع الذكر المخصص
+  Future<void> scheduleDhikrTrackerReminder({
+    required String dhikrId,
+    required String dhikrName,
+    required int currentCount,
+    required int targetCount,
+    required Duration interval,
+  }) async {
+    if (currentCount >= targetCount) {
+      await cancelNotification(dhikrId.hashCode);
+      return;
+    }
+
+    final nextReminder = DateTime.now().add(interval);
+    await scheduleNotification(
+      id: dhikrId.hashCode,
+      title: '📿 تذكير: $dhikrName',
+      body:
+          'تقدمك: $currentCount/$targetCount - المتبقي: ${targetCount - currentCount}',
+      scheduledTime: nextReminder,
+      payload: 'dhikr_tracker:$dhikrId',
+    );
+  }
+
+  /// تنبيه الورد اليومي من القرآن
+  Future<void> scheduleQuranWirdReminder({
+    required int dailyPortion,
+    required int completedToday,
+    List<int>? reminderHours,
+  }) async {
+    if (completedToday >= dailyPortion) {
+      await cancelNotification(1000);
+      return;
+    }
+
+    final hours = reminderHours ?? [9, 15, 20];
+    final now = DateTime.now();
+    int baseId = 1000;
+
+    for (var hour in hours) {
+      baseId++;
+      var reminderTime = DateTime(now.year, now.month, now.day, hour, 0);
+
+      if (reminderTime.isBefore(now)) continue;
+
+      await scheduleNotification(
+        id: baseId,
+        title: '📖 تذكير بالورد اليومي',
+        body: 'لم تكمل وردك اليوم بعد ($completedToday/$dailyPortion)',
+        scheduledTime: reminderTime,
+      );
+    }
   }
 }
