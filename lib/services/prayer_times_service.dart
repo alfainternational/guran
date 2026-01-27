@@ -69,16 +69,17 @@ class PrayerTimesService {
     return Coordinates(24.7136, 46.6753);
   }
 
-  /// حساب مواقيت الصلاة لليوم الحالي
-  Future<PrayerTimes?> calculatePrayerTimes() async {
-    final now = DateTime.now();
+  /// حساب مواقيت الصلاة لتاريخ محدد (افتراضياً اليوم)
+  Future<PrayerTimes?> calculatePrayerTimes({DateTime? date}) async {
+    final targetDate = date ?? DateTime.now();
 
-    // استخدام cache إذا كان نفس اليوم
-    if (_cachedPrayerTimes != null &&
+    // استخدام cache فقط لليوم الحالي (بدون تاريخ مخصص)
+    if (date == null &&
+        _cachedPrayerTimes != null &&
         _cachedDate != null &&
-        _cachedDate!.year == now.year &&
-        _cachedDate!.month == now.month &&
-        _cachedDate!.day == now.day) {
+        _cachedDate!.year == targetDate.year &&
+        _cachedDate!.month == targetDate.month &&
+        _cachedDate!.day == targetDate.day) {
       return _cachedPrayerTimes;
     }
 
@@ -90,12 +91,15 @@ class PrayerTimesService {
 
     final prayerTimes = PrayerTimes(
       coordinates,
-      DateComponents.from(now),
+      DateComponents.from(targetDate),
       params,
     );
 
-    _cachedPrayerTimes = prayerTimes;
-    _cachedDate = now;
+    // تخزين cache فقط لليوم الحالي
+    if (date == null) {
+      _cachedPrayerTimes = prayerTimes;
+      _cachedDate = targetDate;
+    }
 
     return prayerTimes;
   }
@@ -109,7 +113,20 @@ class PrayerTimesService {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    final isEnabled =
+        prefs.getBool('prayer_notifications_enabled') ?? true;
+    if (!isEnabled) {
+      debugPrint('تنبيهات الصلاة معطّلة');
+      return;
+    }
+
     final minutesBefore = prefs.getInt('prayer_reminder_minutes') ?? 15;
+
+    // إلغاء التنبيهات السابقة للصلوات
+    final notificationService = NotificationService();
+    for (var key in ['fajr', 'dhuhr', 'asr', 'maghrib', 'isha']) {
+      await notificationService.cancelNotification(key.hashCode);
+    }
 
     // جدولة تنبيه لكل صلاة
     final prayers = {
@@ -125,12 +142,13 @@ class PrayerTimesService {
       final prayerTime = entry.value;
 
       // التحقق من تفعيل التنبيه لهذه الصلاة
-      final isEnabled = prefs.getBool('prayer_${entry.key}_enabled') ?? true;
-      if (!isEnabled) continue;
+      final isPrayerEnabled =
+          prefs.getBool('prayer_${entry.key}_enabled') ?? true;
+      if (!isPrayerEnabled) continue;
 
       // جدولة التنبيه
       if (prayerTime.isAfter(DateTime.now())) {
-        await NotificationService().schedulePrayerNotification(
+        await notificationService.schedulePrayerNotification(
           prayerName: prayerName,
           prayerTime: prayerTime,
           minutesBefore: minutesBefore,

@@ -5,6 +5,42 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/motivational_messages.dart';
 
+/// معرّفات ثابتة للتنبيهات - لضمان عدم التكرار وإمكانية الإلغاء
+class NotificationIds {
+  // أذكار الصباح والمساء
+  static const int morningAdhkar = 100;
+  static const int eveningAdhkar = 101;
+  static const int istighfar = 102;
+
+  // الثلث الأخير من الليل
+  static const int lastThirdOfNight = 110;
+
+  // صلاة الضحى
+  static const int duha = 115;
+
+  // أذكار النوم
+  static const int sleepAdhkar = 120;
+
+  // الصلوات (200-204)
+  static const int fajr = 200;
+  static const int dhuhr = 201;
+  static const int asr = 202;
+  static const int maghrib = 203;
+  static const int isha = 204;
+
+  // تذكيرات القراءة (300-309)
+  static const int readingBase = 300;
+
+  // الورد اليومي (400-409)
+  static const int wirdBase = 400;
+
+  // أذكار مخصصة (500+)
+  static const int customBase = 500;
+
+  // إعادة الجدولة اليومية
+  static const int dailyReschedule = 999;
+}
+
 /// خدمة الإشعارات
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -44,7 +80,7 @@ class NotificationService {
 
   void _onNotificationTapped(NotificationResponse response) {
     // معالجة النقر على الإشعار
-    // يمكن فتح صفحة معينة أو تنفيذ إجراء معين
+    debugPrint('تم النقر على الإشعار: ${response.payload}');
   }
 
   /// طلب أذونات الإشعارات
@@ -99,10 +135,11 @@ class NotificationService {
   }
 
   /// إشعار تحفيزي
-  Future<void> showMotivationalNotification(MotivationalMessage message) async {
+  Future<void> showMotivationalNotification(
+      MotivationalMessage message) async {
     await showNotification(
       id: message.id.hashCode,
-      title: '✨ رسالة تحفيزية',
+      title: 'رسالة تحفيزية',
       body: message.arabicText,
     );
   }
@@ -111,7 +148,7 @@ class NotificationService {
   Future<void> showAchievementNotification(String message) async {
     await showNotification(
       id: message.hashCode,
-      title: '🏆 إنجاز جديد',
+      title: 'إنجاز جديد',
       body: message,
     );
   }
@@ -123,7 +160,7 @@ class NotificationService {
   }) async {
     await showNotification(
       id: 1,
-      title: '📖 حان وقت القراءة',
+      title: 'حان وقت القراءة',
       body: 'لا تنس قراءة $portion اليوم (حوالي $estimatedMinutes دقيقة)',
     );
   }
@@ -135,12 +172,12 @@ class NotificationService {
   }) async {
     await showNotification(
       id: 2,
-      title: '🌙 تذكير بالأذكار',
+      title: 'تذكير بالأذكار',
       body: 'حان وقت $dhikrType ($time)',
     );
   }
 
-  /// جدولة إشعار في وقت محدد
+  /// جدولة إشعار في وقت محدد بدقة
   Future<void> scheduleNotification({
     required int id,
     required String title,
@@ -148,13 +185,21 @@ class NotificationService {
     required DateTime scheduledTime,
     String? payload,
   }) async {
+    // لا تجدول إشعاراً في الماضي
+    if (scheduledTime.isBefore(DateTime.now())) {
+      debugPrint('تم تجاهل إشعار ($id): الوقت في الماضي');
+      return;
+    }
+
     try {
-      const androidDetails = AndroidNotificationDetails(
+      final androidDetails = AndroidNotificationDetails(
         'guran_scheduled',
-        'Scheduled Notifications',
-        channelDescription: 'الإشعارات المجدولة',
+        'الإشعارات المجدولة',
+        channelDescription: 'تنبيهات الصلاة والأذكار',
         importance: Importance.high,
         priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+        styleInformation: BigTextStyleInformation(body),
       );
 
       const iosDetails = DarwinNotificationDetails(
@@ -163,7 +208,7 @@ class NotificationService {
         presentSound: true,
       );
 
-      const details = NotificationDetails(
+      final details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );
@@ -179,15 +224,12 @@ class NotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: payload,
       );
-    } catch (e) {
-      debugPrint('خطأ في جدولة الإشعار: $e');
-      // في حالة الفشل، نعرض إشعاراً فورياً بدلاً من الجدولة
-      await showNotification(
-        id: id,
-        title: title,
-        body: body,
-        payload: payload,
+
+      debugPrint(
+        'تمت جدولة إشعار ($id): "$title" في ${scheduledTime.toString()}',
       );
+    } catch (e) {
+      debugPrint('خطأ في جدولة الإشعار ($id): $e');
     }
   }
 
@@ -198,99 +240,6 @@ class NotificationService {
       }
     }
     return AndroidScheduleMode.inexactAllowWhileIdle;
-  }
-
-  /// جدولة إشعار يومي
-  Future<void> scheduleDailyNotification({
-    required int id,
-    required String title,
-    required String body,
-    required int hour,
-    required int minute,
-  }) async {
-    final now = DateTime.now();
-    var scheduledDate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    );
-
-    // إذا كان الوقت قد مضى اليوم، جدول للغد
-    if (scheduledDate.isBefore(now)) {
-      scheduledDate = scheduledDate.add(const Duration(days: 1));
-    }
-
-    await scheduleNotification(
-      id: id,
-      title: title,
-      body: body,
-      scheduledTime: scheduledDate,
-    );
-  }
-
-  /// جدولة تذكيرات الأذكار اليومية
-  Future<void> scheduleDailyDhikrReminders() async {
-    // أذكار الصباح (بعد الفجر - 6 صباحاً)
-    await scheduleDailyNotification(
-      id: 100,
-      title: '🌅 أذكار الصباح',
-      body: 'صباح الخير! حان وقت أذكار الصباح',
-      hour: 6,
-      minute: 0,
-    );
-
-    // أذكار المساء (بعد العصر - 4 عصراً)
-    await scheduleDailyNotification(
-      id: 101,
-      title: '🌙 أذكار المساء',
-      body: 'مساء الخير! حان وقت أذكار المساء',
-      hour: 16,
-      minute: 0,
-    );
-
-    // تذكير بالاستغفار (منتصف النهار)
-    await scheduleDailyNotification(
-      id: 102,
-      title: '🤲 وقت الاستغفار',
-      body: 'استغفر الله وتب إليه',
-      hour: 12,
-      minute: 0,
-    );
-  }
-
-  /// جدولة تذكيرات القراءة حسب الخطة
-  Future<void> scheduleReadingReminders({
-    required List<int> hours, // ساعات التذكير
-  }) async {
-    int notificationId = 200;
-
-    for (final hour in hours) {
-      await scheduleDailyNotification(
-        id: notificationId++,
-        title: '📖 وقت القراءة',
-        body: MotivationalMessages.getRandomMessage(MessageTrigger.reminderTime)
-            .arabicText,
-        hour: hour,
-        minute: 0,
-      );
-    }
-  }
-
-  /// إلغاء إشعار محدد
-  Future<void> cancelNotification(int id) async {
-    await _notifications.cancel(id);
-  }
-
-  /// إلغاء جميع الإشعارات
-  Future<void> cancelAllNotifications() async {
-    await _notifications.cancelAll();
-  }
-
-  /// الحصول على الإشعارات المعلقة
-  Future<List<PendingNotificationRequest>> getPendingNotifications() async {
-    return await _notifications.pendingNotificationRequests();
   }
 
   /// تنبيه مواقيت الصلاة
@@ -305,11 +254,156 @@ class NotificationService {
     if (notificationTime.isBefore(DateTime.now())) return;
 
     await scheduleNotification(
-      id: prayerName.hashCode,
-      title: '🕌 حان وقت صلاة $prayerName',
-      body: 'بعد $minutesBefore دقيقة',
+      id: _getPrayerNotificationId(prayerName),
+      title: 'حان وقت صلاة $prayerName',
+      body: minutesBefore > 0
+          ? 'بقي $minutesBefore دقيقة على صلاة $prayerName'
+          : 'حان الآن وقت صلاة $prayerName',
       scheduledTime: notificationTime,
+      payload: 'prayer:$prayerName',
     );
+  }
+
+  int _getPrayerNotificationId(String prayerName) {
+    switch (prayerName) {
+      case 'الفجر':
+        return NotificationIds.fajr;
+      case 'الظهر':
+        return NotificationIds.dhuhr;
+      case 'العصر':
+        return NotificationIds.asr;
+      case 'المغرب':
+        return NotificationIds.maghrib;
+      case 'العشاء':
+        return NotificationIds.isha;
+      default:
+        return prayerName.hashCode;
+    }
+  }
+
+  /// جدولة تنبيه أذكار الصباح بناءً على وقت الفجر الفعلي
+  Future<void> scheduleMorningAdhkar({
+    required DateTime fajrTime,
+  }) async {
+    // أذكار الصباح بعد الفجر بـ 5 دقائق
+    final adhkarTime = fajrTime.add(const Duration(minutes: 5));
+
+    await scheduleNotification(
+      id: NotificationIds.morningAdhkar,
+      title: 'أذكار الصباح',
+      body:
+          'أصبحنا وأصبح الملك لله - حان وقت أذكار الصباح',
+      scheduledTime: adhkarTime,
+      payload: 'adhkar:morning',
+    );
+  }
+
+  /// جدولة تنبيه أذكار المساء بناءً على وقت العصر الفعلي
+  Future<void> scheduleEveningAdhkar({
+    required DateTime asrTime,
+  }) async {
+    // أذكار المساء بعد العصر بـ 5 دقائق
+    final adhkarTime = asrTime.add(const Duration(minutes: 5));
+
+    await scheduleNotification(
+      id: NotificationIds.eveningAdhkar,
+      title: 'أذكار المساء',
+      body:
+          'أمسينا وأمسى الملك لله - حان وقت أذكار المساء',
+      scheduledTime: adhkarTime,
+      payload: 'adhkar:evening',
+    );
+  }
+
+  /// جدولة تنبيه الثلث الأخير من الليل
+  Future<void> scheduleLastThirdOfNight({
+    required DateTime lastThirdStart,
+  }) async {
+    await scheduleNotification(
+      id: NotificationIds.lastThirdOfNight,
+      title: 'الثلث الأخير من الليل',
+      body:
+          'ينزل ربنا تبارك وتعالى كل ليلة إلى السماء الدنيا - هل من داعٍ فأستجيب له؟',
+      scheduledTime: lastThirdStart,
+      payload: 'night:last_third',
+    );
+  }
+
+  /// جدولة تنبيه صلاة الضحى
+  Future<void> scheduleDuhaReminder({
+    required DateTime sunriseTime,
+  }) async {
+    // صلاة الضحى بعد الشروق بـ 20 دقيقة
+    final duhaTime = sunriseTime.add(const Duration(minutes: 20));
+
+    await scheduleNotification(
+      id: NotificationIds.duha,
+      title: 'وقت صلاة الضحى',
+      body: 'لا تنس صلاة الضحى - وقتها من ارتفاع الشمس إلى قبل الزوال',
+      scheduledTime: duhaTime,
+      payload: 'prayer:duha',
+    );
+  }
+
+  /// جدولة تنبيه أذكار النوم
+  Future<void> scheduleSleepAdhkar({
+    required DateTime ishaTime,
+  }) async {
+    // أذكار النوم بعد العشاء بساعتين
+    final sleepTime = ishaTime.add(const Duration(hours: 2));
+
+    await scheduleNotification(
+      id: NotificationIds.sleepAdhkar,
+      title: 'أذكار النوم',
+      body: 'باسمك اللهم أموت وأحيا - لا تنس أذكار النوم',
+      scheduledTime: sleepTime,
+      payload: 'adhkar:sleep',
+    );
+  }
+
+  /// جدولة تنبيه الاستغفار
+  Future<void> scheduleIstighfarReminder({
+    required DateTime time,
+  }) async {
+    await scheduleNotification(
+      id: NotificationIds.istighfar,
+      title: 'وقت الاستغفار',
+      body: 'استغفر الله العظيم وأتوب إليه',
+      scheduledTime: time,
+      payload: 'adhkar:istighfar',
+    );
+  }
+
+  /// جدولة تذكيرات القراءة حسب الخطة
+  Future<void> scheduleReadingReminders({
+    required List<int> hours,
+  }) async {
+    int notificationId = NotificationIds.readingBase;
+
+    final now = DateTime.now();
+    for (final hour in hours) {
+      var scheduledDate = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        hour,
+        0,
+      );
+
+      if (scheduledDate.isBefore(now)) {
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      await scheduleNotification(
+        id: notificationId++,
+        title: 'وقت القراءة',
+        body: MotivationalMessages.getRandomMessage(
+                MessageTrigger.reminderTime)
+            .arabicText,
+        scheduledTime: scheduledDate,
+        payload: 'reading:reminder',
+      );
+    }
   }
 
   /// تنبيه تتبع الذكر المخصص
@@ -328,7 +422,7 @@ class NotificationService {
     final nextReminder = DateTime.now().add(interval);
     await scheduleNotification(
       id: dhikrId.hashCode,
-      title: '📿 تذكير: $dhikrName',
+      title: 'تذكير: $dhikrName',
       body:
           'تقدمك: $currentCount/$targetCount - المتبقي: ${targetCount - currentCount}',
       scheduledTime: nextReminder,
@@ -343,26 +437,73 @@ class NotificationService {
     List<int>? reminderHours,
   }) async {
     if (completedToday >= dailyPortion) {
-      await cancelNotification(1000);
+      // أكمل الورد - لا حاجة للتذكير
+      for (var i = 0; i < 3; i++) {
+        await cancelNotification(NotificationIds.wirdBase + i);
+      }
       return;
     }
 
     final hours = reminderHours ?? [9, 15, 20];
     final now = DateTime.now();
-    int baseId = 1000;
+    int baseId = NotificationIds.wirdBase;
 
     for (var hour in hours) {
-      baseId++;
       var reminderTime = DateTime(now.year, now.month, now.day, hour, 0);
 
       if (reminderTime.isBefore(now)) continue;
 
       await scheduleNotification(
-        id: baseId,
-        title: '📖 تذكير بالورد اليومي',
+        id: baseId++,
+        title: 'تذكير بالورد اليومي',
         body: 'لم تكمل وردك اليوم بعد ($completedToday/$dailyPortion)',
         scheduledTime: reminderTime,
+        payload: 'reading:wird',
       );
     }
+  }
+
+  /// إلغاء إشعار محدد
+  Future<void> cancelNotification(int id) async {
+    await _notifications.cancel(id);
+  }
+
+  /// إلغاء جميع الإشعارات
+  Future<void> cancelAllNotifications() async {
+    await _notifications.cancelAll();
+  }
+
+  /// إلغاء جميع تنبيهات الأذكار
+  Future<void> cancelAllAdhkarNotifications() async {
+    await cancelNotification(NotificationIds.morningAdhkar);
+    await cancelNotification(NotificationIds.eveningAdhkar);
+    await cancelNotification(NotificationIds.istighfar);
+    await cancelNotification(NotificationIds.lastThirdOfNight);
+    await cancelNotification(NotificationIds.duha);
+    await cancelNotification(NotificationIds.sleepAdhkar);
+  }
+
+  /// إلغاء جميع تنبيهات الصلوات
+  Future<void> cancelAllPrayerNotifications() async {
+    await cancelNotification(NotificationIds.fajr);
+    await cancelNotification(NotificationIds.dhuhr);
+    await cancelNotification(NotificationIds.asr);
+    await cancelNotification(NotificationIds.maghrib);
+    await cancelNotification(NotificationIds.isha);
+  }
+
+  /// الحصول على الإشعارات المعلقة
+  Future<List<PendingNotificationRequest>> getPendingNotifications() async {
+    return await _notifications.pendingNotificationRequests();
+  }
+
+  /// طباعة جميع الإشعارات المعلقة (للتصحيح)
+  Future<void> debugPrintPendingNotifications() async {
+    final pending = await getPendingNotifications();
+    debugPrint('=== الإشعارات المعلقة (${pending.length}) ===');
+    for (var n in pending) {
+      debugPrint('  [${n.id}] ${n.title}: ${n.body}');
+    }
+    debugPrint('=============================');
   }
 }

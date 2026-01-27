@@ -7,6 +7,7 @@ import 'screens/dhikr_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'screens/plan_setup_screen.dart';
 import 'services/notification_service.dart';
+import 'services/notification_scheduler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -48,11 +49,37 @@ class KhatmatiApp extends StatefulWidget {
   State<KhatmatiApp> createState() => _KhatmatiAppState();
 }
 
-class _KhatmatiAppState extends State<KhatmatiApp> {
+class _KhatmatiAppState extends State<KhatmatiApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeServices();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // إعادة جدولة التنبيهات عند العودة للتطبيق (يوم جديد مثلاً)
+      _rescheduleIfNeeded();
+    }
+  }
+
+  Future<void> _rescheduleIfNeeded() async {
+    try {
+      final scheduler = NotificationScheduler();
+      if (await scheduler.needsReschedule()) {
+        await scheduler.scheduleAllNotifications();
+      }
+    } catch (e) {
+      debugPrint('Reschedule error: $e');
+    }
   }
 
   Future<void> _initializeServices() async {
@@ -62,10 +89,15 @@ class _KhatmatiAppState extends State<KhatmatiApp> {
       await LocalQuranService.loadQuranData();
       await TafseerService.loadTafseer();
 
-      // تهيئة الخدمات بعد بناء التطبيق
+      // تهيئة خدمة الإشعارات
       await NotificationService().initialize();
       await NotificationService().requestPermissions();
-      await NotificationService().scheduleDailyDhikrReminders();
+
+      // جدولة جميع التنبيهات الفعلية بناءً على الموقع والإعدادات
+      final scheduler = NotificationScheduler();
+      if (await scheduler.needsReschedule()) {
+        await scheduler.scheduleAllNotifications();
+      }
 
       // قفل الاتجاه العمودي فقط
       await SystemChrome.setPreferredOrientations([
