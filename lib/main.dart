@@ -14,13 +14,19 @@ import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'providers/reading_provider.dart';
 import 'providers/dhikr_provider.dart';
 import 'providers/profile_provider.dart';
+import 'providers/theme_provider.dart';
+import 'providers/gamification_provider.dart';
 import 'screens/settings_screen.dart';
+import 'screens/enhanced_settings_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/enhanced_onboarding_screen.dart';
+import 'screens/enhanced_home_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'models/quran_data.dart';
 import 'services/local_quran_service.dart';
 import 'services/tafseer_service.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,84 +91,36 @@ class _KhatmatiAppState extends State<KhatmatiApp> {
         ChangeNotifierProvider(create: (_) => ReadingProvider()),
         ChangeNotifierProvider(create: (_) => DhikrProvider()),
         ChangeNotifierProvider(create: (_) => ProfileProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => GamificationProvider()),
       ],
-      child: MaterialApp(
-        title: 'ختمتي - رفيقك في رحلة القرآن الكريم',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          primaryColor: const Color(0xFF1B5E20), // أخضر داكن
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF1B5E20),
-            brightness: Brightness.light,
-          ),
-          fontFamily: 'Amiri',
-          textTheme: const TextTheme(
-            displayLarge: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1B5E20),
-            ),
-            displayMedium: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF2E7D32),
-            ),
-            bodyLarge: TextStyle(
-              fontSize: 18,
-              color: Color(0xFF424242),
-            ),
-            bodyMedium: TextStyle(
-              fontSize: 16,
-              color: Color(0xFF616161),
-            ),
-          ),
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFF1B5E20),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-          ),
-          bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-            selectedItemColor: Color(0xFF1B5E20),
-            unselectedItemColor: Colors.grey,
-            showSelectedLabels: true,
-            showUnselectedLabels: true,
-            type: BottomNavigationBarType.fixed,
-          ),
-          cardTheme: const CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(16)),
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1B5E20),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.all(Radius.circular(12)),
-              ),
-            ),
-          ),
-        ),
-        locale: const Locale('ar', 'SA'),
-        supportedLocales: const [
-          Locale('ar', 'SA'),
-        ],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        home: const RootHandler(),
-        routes: {
-          '/plan': (context) => const PlanSetupScreen(),
-          '/plan-setup': (context) => const PlanSetupScreen(),
-          '/reading': (context) => const ReadingScreen(),
-          '/settings': (context) => const SettingsScreen(),
-          '/onboarding': (context) => const OnboardingScreen(),
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          return MaterialApp(
+            title: 'ختمتي - رفيقك في رحلة القرآن الكريم',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.lightTheme,
+            darkTheme: AppTheme.darkTheme,
+            themeMode: themeProvider.themeMode,
+            locale: const Locale('ar', 'SA'),
+            supportedLocales: const [
+              Locale('ar', 'SA'),
+            ],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            home: const RootHandler(),
+            routes: {
+              '/plan': (context) => const PlanSetupScreen(),
+              '/plan-setup': (context) => const PlanSetupScreen(),
+              '/reading': (context) => const ReadingScreen(),
+              '/settings': (context) => const EnhancedSettingsScreen(),
+              '/onboarding': (context) => const EnhancedOnboardingScreen(),
+              '/home': (context) => const EnhancedHomeScreen(),
+            },
+          );
         },
       ),
     );
@@ -177,13 +135,56 @@ class RootHandler extends StatelessWidget {
     return Consumer<ProfileProvider>(
       builder: (context, provider, _) {
         if (provider.isLoading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.menu_book_rounded,
+                      size: 40,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'ختمتي',
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'رفيقك في رحلة القرآن الكريم',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
         if (!provider.hasProfile) {
-          return const OnboardingScreen();
+          return const EnhancedOnboardingScreen();
         }
 
         return const MainNavigationScreen();
