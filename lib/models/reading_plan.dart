@@ -28,11 +28,15 @@ class ReadingPlan {
     required DateTime startDate,
     required int numberOfDays,
     PlanType planType = PlanType.byJuz,
+    int? targetDailyMinutes,
+    int sessionsPerDay = 1,
   }) {
     final endDate = startDate.add(Duration(days: numberOfDays - 1));
     final portions = _calculateDailyPortions(
       numberOfDays: numberOfDays,
       planType: planType,
+      targetDailyMinutes: targetDailyMinutes,
+      sessionsPerDay: sessionsPerDay,
     );
 
     return ReadingPlan(
@@ -47,10 +51,18 @@ class ReadingPlan {
   static List<DailyPortion> _calculateDailyPortions({
     required int numberOfDays,
     required PlanType planType,
+    int? targetDailyMinutes,
+    int sessionsPerDay = 1,
   }) {
     final List<DailyPortion> portions = [];
+    final minutesPerJuz = targetDailyMinutes != null
+        ? (targetDailyMinutes * numberOfDays) / 30.0
+        : 20.0;
+    final minutesPerSurah = targetDailyMinutes != null
+        ? (targetDailyMinutes * numberOfDays) / 114.0
+        : 5.0;
 
-    if (planType == PlanType.byJuz) {
+    if (planType == PlanType.byJuz || planType == PlanType.custom) {
       // توزيع 30 جزء على عدد الأيام بدقة
       int lastEnd = 0;
       for (int day = 1; day <= numberOfDays; day++) {
@@ -59,11 +71,17 @@ class ReadingPlan {
         final end = currentEnd;
 
         if (start <= 30) {
+          final estimated = _estimateReadingTime(
+            end - start + 1.0,
+            minutesPerUnit: minutesPerJuz,
+          );
           portions.add(DailyPortion(
             dayNumber: day,
             startJuz: start,
             endJuz: end < start ? start : end,
-            estimatedMinutes: _estimateReadingTime(end - start + 1.0),
+            estimatedMinutes: estimated,
+            sessionMinutes:
+                _splitDailyMinutes(estimated, sessionsPerDay.clamp(1, 12)),
           ));
         }
         lastEnd = end;
@@ -81,12 +99,17 @@ class ReadingPlan {
         final endSurah = currentEndSurah;
 
         if (startSurah <= 114) {
+          final estimated = _estimateReadingTime(
+            endSurah - startSurah + 1.0,
+            minutesPerUnit: minutesPerSurah,
+          );
           portions.add(DailyPortion(
             dayNumber: day,
             startSurah: startSurah,
             endSurah: endSurah < startSurah ? startSurah : endSurah,
-            estimatedMinutes:
-                _estimateReadingTime((endSurah - startSurah + 1.0) / 4),
+            estimatedMinutes: estimated,
+            sessionMinutes:
+                _splitDailyMinutes(estimated, sessionsPerDay.clamp(1, 12)),
           ));
         }
         lastEndSurah = endSurah;
@@ -97,8 +120,21 @@ class ReadingPlan {
   }
 
   /// تقدير وقت القراءة بالدقائق (متوسط 20 دقيقة لكل جزء)
-  static int _estimateReadingTime(double portions) {
-    return (portions * 20).ceil();
+  static int _estimateReadingTime(
+    double units, {
+    double minutesPerUnit = 20,
+  }) {
+    return (units * minutesPerUnit).ceil();
+  }
+
+  static List<int> _splitDailyMinutes(int totalMinutes, int sessionsPerDay) {
+    final sessions = sessionsPerDay.clamp(1, 12);
+    final base = totalMinutes ~/ sessions;
+    final remainder = totalMinutes % sessions;
+    return List<int>.generate(
+      sessions,
+      (i) => base + (i < remainder ? 1 : 0),
+    ).where((m) => m > 0).toList();
   }
 
   Map<String, dynamic> toJson() {
@@ -140,6 +176,7 @@ class DailyPortion {
   final int? startSurah;
   final int? endSurah;
   final int estimatedMinutes;
+  final List<int> sessionMinutes;
   bool isCompleted;
   DateTime? completedAt;
 
@@ -150,9 +187,11 @@ class DailyPortion {
     this.startSurah,
     this.endSurah,
     required this.estimatedMinutes,
+    List<int>? sessionMinutes,
     this.isCompleted = false,
     this.completedAt,
-  });
+  }) : sessionMinutes =
+            sessionMinutes ?? [estimatedMinutes];
 
   void markCompleted() {
     isCompleted = true;
@@ -167,6 +206,7 @@ class DailyPortion {
       'startSurah': startSurah,
       'endSurah': endSurah,
       'estimatedMinutes': estimatedMinutes,
+      'sessionMinutes': sessionMinutes,
       'isCompleted': isCompleted,
       'completedAt': completedAt?.toIso8601String(),
     };
@@ -180,6 +220,10 @@ class DailyPortion {
       startSurah: json['startSurah'] as int?,
       endSurah: json['endSurah'] as int?,
       estimatedMinutes: json['estimatedMinutes'] as int,
+      sessionMinutes: (json['sessionMinutes'] as List?)
+              ?.map((e) => e as int)
+              .toList() ??
+          [json['estimatedMinutes'] as int],
       isCompleted: json['isCompleted'] as bool? ?? false,
       completedAt: json['completedAt'] != null
           ? DateTime.parse(json['completedAt'] as String)

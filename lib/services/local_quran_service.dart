@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/quran_text_utils.dart';
 
 /// نموذج الآية من بيانات حفص
 class QuranAyah {
@@ -96,7 +97,9 @@ class LocalQuranService {
 
     final StringBuffer text = StringBuffer();
     for (var ayah in ayahs) {
-      text.write(ayah.ayaText);
+      text.write(QuranTextUtils.sanitizeAyahText(ayah.ayaText));
+      text.write(' ');
+      text.write('﴿${ayah.ayaNo}﴾');
       text.write(' ');
 
       // إضافة سطر جديد بعد كل آية لسهولة القراءة
@@ -129,8 +132,9 @@ class LocalQuranService {
         currentText = StringBuffer();
       }
 
-      currentText.write(ayah.ayaText);
+      currentText.write(QuranTextUtils.sanitizeAyahText(ayah.ayaText));
       currentText.write(' ');
+      currentText.write('﴿${ayah.ayaNo}﴾');
       currentText.write('\n');
     }
 
@@ -161,4 +165,37 @@ class LocalQuranService {
 
   /// تحقق من أن البيانات محملة
   static bool get isLoaded => _isLoaded;
+
+  /// فحص سلامة البيانات: وجود جميع السور والآيات المتوقعة
+  static Map<String, dynamic> validateDataset() {
+    final ayahs = _allAyahs ?? [];
+    final Map<int, int> maxAyahBySurah = {};
+
+    for (final ayah in ayahs) {
+      maxAyahBySurah[ayah.suraNo] =
+          (maxAyahBySurah[ayah.suraNo] ?? 0) > ayah.ayaNo
+              ? maxAyahBySurah[ayah.suraNo]!
+              : ayah.ayaNo;
+    }
+
+    final List<int> missingSurahs = [];
+    for (int s = 1; s <= 114; s++) {
+      if (!maxAyahBySurah.containsKey(s)) {
+        missingSurahs.add(s);
+      }
+    }
+
+    int suspiciousGlyphCount = 0;
+    for (final ayah in ayahs) {
+      final cleaned = QuranTextUtils.sanitizeAyahText(ayah.ayaText);
+      if (cleaned.isEmpty) suspiciousGlyphCount++;
+    }
+
+    return {
+      'totalAyahs': ayahs.length,
+      'totalSurahs': maxAyahBySurah.length,
+      'missingSurahs': missingSurahs,
+      'emptyAfterSanitize': suspiciousGlyphCount,
+    };
+  }
 }
