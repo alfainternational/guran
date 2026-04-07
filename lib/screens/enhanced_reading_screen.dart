@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/reading_provider.dart';
 import '../providers/gamification_provider.dart';
 import '../models/quran_data.dart';
+import '../services/focus_mode_service.dart';
 import 'surah_reader_screen.dart';
 import 'juz_viewer_screen.dart';
 
@@ -238,56 +239,102 @@ class _EnhancedReadingScreenState extends State<EnhancedReadingScreen>
     final progress = provider.userProgress;
     final completedJuzs = progress?.completedJuzs.values.where((v) => v).length ?? 0;
     final percentage = (completedJuzs / 30 * 100).toStringAsFixed(0);
+    final today = provider.getTodayPortion();
+    final sessionsCount = today?.sessionMinutes.length ?? 1;
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'تقدمك في القرآن',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 16,
-                ),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'تقدمك في القرآن',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$completedJuzs / 30 جزء',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (today != null)
+                    Text(
+                      'ورد اليوم مقسّم إلى $sessionsCount ${sessionsCount == 1 ? 'مرة' : 'مرات'}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                '$completedJuzs / 30 جزء',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            SizedBox(
+              width: 56,
+              height: 56,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    value: completedJuzs / 30,
+                    strokeWidth: 5,
+                    backgroundColor: Colors.white24,
+                    color: Colors.white,
+                  ),
+                  Text(
+                    '$percentage%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        SizedBox(
-          width: 56,
-          height: 56,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CircularProgressIndicator(
-                value: completedJuzs / 30,
-                strokeWidth: 5,
-                backgroundColor: Colors.white24,
-                color: Colors.white,
-              ),
-              Text(
-                '$percentage%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
+        if (today != null && today.sessionMinutes.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: List.generate(today.sessionMinutes.length, (index) {
+              final done =
+                  provider.isDailySessionCompleted(today.dayNumber, index);
+              return InkWell(
+                onTap: () =>
+                    provider.toggleDailySessionCompletion(today.dayNumber, index),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: done ? Colors.white : Colors.white24,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    'فترة ${index + 1}: ${today.sessionMinutes[index]} د',
+                    style: TextStyle(
+                      color: done ? theme.colorScheme.primary : Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              );
+            }),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -580,13 +627,14 @@ class _EnhancedReadingScreenState extends State<EnhancedReadingScreen>
           _endSession(provider);
         } else {
           provider.startReadingSession();
+          FocusModeService().startFocusMode(durationMinutes: 30);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: const Row(
                 children: [
                   Icon(Icons.play_circle_filled, color: Colors.white),
                   SizedBox(width: 8),
-                  Text('بدأت جلسة القراءة'),
+                  Text('بدأت جلسة القراءة + وضع التركيز'),
                 ],
               ),
               backgroundColor: theme.colorScheme.primary,
@@ -607,7 +655,9 @@ class _EnhancedReadingScreenState extends State<EnhancedReadingScreen>
 
   void _endSession(ReadingProvider provider) {
     final theme = Theme.of(context);
-    int ayahsRead = 20;
+    int ayahsRead = provider.validatedAyahReadsCount > 0
+        ? provider.validatedAyahReadsCount
+        : 20;
 
     showModalBottomSheet(
       context: context,
@@ -656,6 +706,17 @@ class _EnhancedReadingScreenState extends State<EnhancedReadingScreen>
                   color: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
               ),
+              if (provider.validatedAyahReadsCount > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'تم رصد ${provider.validatedAyahReadsCount} آية بزمن قراءة منطقي',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               TextField(
                 keyboardType: TextInputType.number,
@@ -701,35 +762,51 @@ class _EnhancedReadingScreenState extends State<EnhancedReadingScreen>
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(context);
-                        provider.endReadingSession(
-                          ayahsRead: ayahsRead,
-                          surahsRead: [],
-                        );
-                        // إضافة نقاط gamification
-                        final gamProvider = Provider.of<GamificationProvider>(
-                          context,
-                          listen: false,
-                        );
-                        gamProvider.recordReading(ayahsRead);
+                        try {
+                          await provider.endReadingSession(
+                            ayahsRead: ayahsRead,
+                            surahsRead: [],
+                          );
+                          await FocusModeService().stopFocusMode();
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                const Icon(Icons.check_circle, color: Colors.white),
-                                const SizedBox(width: 8),
-                                Text('بارك الله فيك! قرأت $ayahsRead آية'),
-                              ],
+                          // إضافة نقاط gamification
+                          final gamProvider =
+                              Provider.of<GamificationProvider>(
+                            context,
+                            listen: false,
+                          );
+                          gamProvider.recordReading(ayahsRead);
+
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle,
+                                      color: Colors.white),
+                                  const SizedBox(width: 8),
+                                  Text('بارك الله فيك! قرأت $ayahsRead آية'),
+                                ],
+                              ),
+                              backgroundColor: theme.colorScheme.primary,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                            backgroundColor: theme.colorScheme.primary,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                          );
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(e.toString().replaceFirst('Bad state: ', '')),
+                              backgroundColor: Colors.orange.shade700,
+                              behavior: SnackBarBehavior.floating,
                             ),
-                          ),
-                        );
+                          );
+                        }
                       },
                       icon: const Icon(Icons.save_rounded),
                       label: const Text(

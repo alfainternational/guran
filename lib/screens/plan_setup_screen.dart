@@ -13,9 +13,22 @@ class PlanSetupScreen extends StatefulWidget {
 
 class _PlanSetupScreenState extends State<PlanSetupScreen> {
   int _selectedDays = 30;
+  int _targetDailyMinutes = 20;
+  int _sessionsPerDay = 1;
+  DateTime _selectedStartDate = DateTime.now();
   PlanType _selectedType = PlanType.byJuz;
+  final TextEditingController _customDaysController = TextEditingController();
+  final TextEditingController _minutesController =
+      TextEditingController(text: '20');
 
   final List<int> _daysOptions = [7, 14, 30, 60, 90];
+
+  @override
+  void dispose() {
+    _customDaysController.dispose();
+    _minutesController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +82,21 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                 );
               }).toList(),
             ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _customDaysController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'أو أدخل مدة مخصصة (بالأيام)',
+                hintText: 'مثال: 3 أو 40',
+                border: const OutlineInputBorder(),
+                suffixIcon: TextButton(
+                  onPressed: _applyCustomDays,
+                  child: const Text('تطبيق'),
+                ),
+              ),
+              onSubmitted: (_) => _applyCustomDays(),
+            ),
 
             const SizedBox(height: 24),
 
@@ -107,8 +135,78 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
               },
               activeColor: const Color(0xFF1B5E20),
             ),
+            RadioListTile<PlanType>(
+              title: const Text('مرن (تلقائي)'),
+              subtitle: const Text('توزيع ذكي حسب الزمن اليومي المتاح'),
+              value: PlanType.custom,
+              groupValue: _selectedType,
+              onChanged: (value) {
+                setState(() {
+                  _selectedType = value!;
+                });
+              },
+              activeColor: const Color(0xFF1B5E20),
+            ),
 
             const SizedBox(height: 24),
+            const Text(
+              'وقت بداية الخطة',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_month_rounded),
+              title: Text(
+                '${_selectedStartDate.year}-${_selectedStartDate.month.toString().padLeft(2, '0')}-${_selectedStartDate.day.toString().padLeft(2, '0')}  ${_selectedStartDate.hour.toString().padLeft(2, '0')}:${_selectedStartDate.minute.toString().padLeft(2, '0')}',
+              ),
+              trailing: TextButton(
+                onPressed: _pickStartDateTime,
+                child: const Text('تعديل'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _minutesController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'الوقت اليومي المستهدف (بالدقائق)',
+                hintText: 'مثال: 25',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                final parsed = int.tryParse(value);
+                if (parsed != null && parsed > 0) {
+                  setState(() {
+                    _targetDailyMinutes = parsed;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              value: _sessionsPerDay,
+              decoration: const InputDecoration(
+                labelText: 'تقسيم الورد اليومي على عدد مرات',
+                border: OutlineInputBorder(),
+              ),
+              items: List.generate(
+                6,
+                (index) => DropdownMenuItem(
+                  value: index + 1,
+                  child: Text('${index + 1} مرة يوميًا'),
+                ),
+              ),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  _sessionsPerDay = value;
+                });
+              },
+            ),
 
             // معلومات الخطة
             Card(
@@ -134,14 +232,33 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
                     const SizedBox(height: 12),
                     _buildInfoRow('المدة:', '$_selectedDays يوم'),
                     _buildInfoRow(
+                      'تاريخ البداية:',
+                      '${_selectedStartDate.year}-${_selectedStartDate.month.toString().padLeft(2, '0')}-${_selectedStartDate.day.toString().padLeft(2, '0')}',
+                    ),
+                    _buildInfoRow(
+                      'وقت البداية:',
+                      '${_selectedStartDate.hour.toString().padLeft(2, '0')}:${_selectedStartDate.minute.toString().padLeft(2, '0')}',
+                    ),
+                    _buildInfoRow(
                       'القراءة اليومية:',
                       _selectedType == PlanType.byJuz
                           ? '${(30 / _selectedDays).toStringAsFixed(1)} جزء'
-                          : '${(114 / _selectedDays).ceil()} سورة',
+                          : _selectedType == PlanType.bySurah
+                              ? '${(114 / _selectedDays).ceil()} سورة'
+                              : '${(30 / _selectedDays).toStringAsFixed(1)} جزء (مرن)',
                     ),
                     _buildInfoRow(
                       'الوقت المتوقع يومياً:',
-                      '${(600 / _selectedDays).ceil()} دقيقة',
+                      '$_targetDailyMinutes دقيقة',
+                    ),
+                    _buildInfoRow(
+                      'تقسيم الورد:',
+                      '$_sessionsPerDay ${_sessionsPerDay == 1 ? 'مرة' : 'مرات'} يوميًا',
+                    ),
+                    _buildInfoRow(
+                      'تاريخ النهاية:',
+                      _formatDate(_selectedStartDate
+                          .add(Duration(days: _selectedDays - 1))),
                     ),
                   ],
                 ),
@@ -191,6 +308,17 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
 
   Future<void> _createPlan() async {
     final provider = context.read<ReadingProvider>();
+    final days = _selectedDays;
+    final minutes = int.tryParse(_minutesController.text) ?? _targetDailyMinutes;
+
+    if (days < 1) {
+      _showError('مدة الخطة يجب أن تكون يومًا واحدًا على الأقل');
+      return;
+    }
+    if (minutes < 5 || minutes > 300) {
+      _showError('الوقت اليومي يجب أن يكون بين 5 و300 دقيقة');
+      return;
+    }
 
     // إظهار مؤشر التحميل
     showDialog(
@@ -203,8 +331,11 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
 
     try {
       await provider.createPlan(
-        numberOfDays: _selectedDays,
+        numberOfDays: days,
         planType: _selectedType,
+        startDate: _selectedStartDate,
+        targetDailyMinutes: minutes,
+        sessionsPerDay: _sessionsPerDay,
       );
 
       if (!mounted) return;
@@ -234,5 +365,57 @@ class _PlanSetupScreenState extends State<PlanSetupScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _pickStartDateTime() async {
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedStartDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+
+    if (selectedDate == null || !mounted) return;
+
+    final selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedStartDate),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _selectedStartDate = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        selectedTime?.hour ?? _selectedStartDate.hour,
+        selectedTime?.minute ?? _selectedStartDate.minute,
+      );
+    });
+  }
+
+  void _applyCustomDays() {
+    final parsed = int.tryParse(_customDaysController.text.trim());
+    if (parsed == null || parsed < 1 || parsed > 3650) {
+      _showError('أدخل عدد أيام صحيح بين 1 و3650');
+      return;
+    }
+    setState(() {
+      _selectedDays = parsed;
+    });
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }

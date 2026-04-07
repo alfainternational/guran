@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/quran_data.dart';
 import '../services/local_quran_service.dart';
+import '../services/recitation_tracking_service.dart';
 import '../services/tafseer_service.dart';
+import '../providers/reading_provider.dart';
+import '../utils/quran_text_utils.dart';
 import '../widgets/ayah_widget.dart';
 
 /// شاشة قراءة السورة المتقدمة مع التحديد والتفسير
@@ -19,11 +23,22 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
   bool _isLoading = true;
   int? _selectedAyahNumber;
   Set<int> _bookmarkedAyahs = {};
+  Set<int> _readAyahs = {};
+  DateTime? _lastAyahTapAt;
+  final RecitationTrackingService _recitationTrackingService =
+      RecitationTrackingService();
+  int _autoTrackStartIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _loadSurahData();
+  }
+
+  @override
+  void dispose() {
+    _recitationTrackingService.stopTracking();
+    super.dispose();
   }
 
   Future<void> _loadSurahData() async {
@@ -55,8 +70,35 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
   }
 
   void _onAyahTap(QuranAyah ayah) {
+    final now = DateTime.now();
+    final dwellSeconds =
+        _lastAyahTapAt == null ? 6 : now.difference(_lastAyahTapAt!).inSeconds;
+    _lastAyahTapAt = now;
+
+    context.read<ReadingProvider>().recordValidatedAyahRead(
+          surahNumber: widget.surah.number,
+          ayahNumber: ayah.ayaNo,
+          dwellSeconds: dwellSeconds,
+        );
+    context.read<ReadingProvider>().setTemporaryStopMarker(
+          surahNumber: widget.surah.number,
+          ayahNumber: ayah.ayaNo,
+        );
+
+    if (dwellSeconds < 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('الانتقال كان سريعًا جدًا، لن تُحتسب هذه الآية بعد.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+
     setState(() {
       _selectedAyahNumber = ayah.ayaNo;
+      _readAyahs.add(ayah.ayaNo);
+      _autoTrackStartIndex = (_ayahs ?? []).indexWhere((a) => a.ayaNo == ayah.ayaNo);
+      if (_autoTrackStartIndex < 0) _autoTrackStartIndex = 0;
     });
 
     // عرض التفسير
@@ -64,29 +106,60 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
   }
 
   void _onAyahLongPress(QuranAyah ayah) {
-    setState(() {
-      if (_bookmarkedAyahs.contains(ayah.ayaNo)) {
-        _bookmarkedAyahs.remove(ayah.ayaNo);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم إزالة العلامة المرجعية')),
-        );
-      } else {
-        _bookmarkedAyahs.add(ayah.ayaNo);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('تم حفظ الآية ${ayah.ayaNo} كعلامة مرجعية'),
-            action: SnackBarAction(
-              label: 'تراجع',
-              onPressed: () {
-                setState(() {
-                  _bookmarkedAyahs.remove(ayah.ayaNo);
-                });
-              },
-            ),
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(
+                  _bookmarkedAyahs.contains(ayah.ayaNo)
+                      ? Icons.bookmark_remove_rounded
+                      : Icons.bookmark_add_rounded,
+                ),
+                title: Text(_bookmarkedAyahs.contains(ayah.ayaNo)
+                    ? 'إزالة العلامة المرجعية'
+                    : 'إضافة علامة مرجعية'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    if (_bookmarkedAyahs.contains(ayah.ayaNo)) {
+                      _bookmarkedAyahs.remove(ayah.ayaNo);
+                    } else {
+                      _bookmarkedAyahs.add(ayah.ayaNo);
+                    }
+                  });
+                },
+              ),
+              Consumer<ReadingProvider>(
+                builder: (context, provider, _) {
+                  final hasMarker = provider.isManualStopMarker(
+                    surahNumber: widget.surah.number,
+                    ayahNumber: ayah.ayaNo,
+                  );
+                  return ListTile(
+                    leading: Icon(hasMarker
+                        ? Icons.push_pin_outlined
+                        : Icons.push_pin_rounded),
+                    title:
+                        Text(hasMarker ? 'إزالة علامة التوقف' : 'وضع علامة توقف'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      provider.toggleManualStopMarker(
+                        surahNumber: widget.surah.number,
+                        ayahNumber: ayah.ayaNo,
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
           ),
         );
-      }
-    });
+      },
+    );
   }
 
   void _showTafseer(QuranAyah ayah) {
@@ -236,12 +309,50 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final readingProvider = context.watch<ReadingProvider>();
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.surah.nameArabic),
         backgroundColor: const Color(0xFF1B5E20),
         foregroundColor: Colors.white,
         actions: [
+          Consumer<ReadingProvider>(
+            builder: (context, readingProvider, _) {
+              if (!readingProvider.isReading) return const SizedBox.shrink();
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      'المحتسب: ${readingProvider.validatedAyahReadsCount}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              _recitationTrackingService.isListening
+                  ? Icons.mic_rounded
+                  : Icons.mic_none_rounded,
+            ),
+            tooltip: _recitationTrackingService.isListening
+                ? 'إيقاف التتبع الصوتي'
+                : 'بدء التتبع الصوتي',
+            onPressed: _toggleVoiceTracking,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadSurahData,
@@ -249,9 +360,7 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.bookmarks),
-            onPressed: () {
-              // TODO: عرض قائمة العلامات المرجعية
-            },
+            onPressed: _showBookmarksSheet,
             tooltip: 'العلامات المرجعية',
           ),
         ],
@@ -316,6 +425,16 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
                             ayah: ayah,
                             isSelected: _selectedAyahNumber == ayah.ayaNo,
                             isBookmarked: _bookmarkedAyahs.contains(ayah.ayaNo),
+                            isRead: _readAyahs.contains(ayah.ayaNo),
+                            isPauseMarked:
+                                readingProvider.temporaryStopSurah ==
+                                        widget.surah.number &&
+                                    readingProvider.temporaryStopAyah ==
+                                        ayah.ayaNo,
+                            isManualStop: readingProvider.isManualStopMarker(
+                              surahNumber: widget.surah.number,
+                              ayahNumber: ayah.ayaNo,
+                            ),
                             onTap: () => _onAyahTap(ayah),
                             onLongPress: () => _onAyahLongPress(ayah),
                           );
@@ -409,9 +528,118 @@ class _SurahReaderScreenState extends State<SurahReaderScreen> {
 
   /// تنظيف النص من الرموز الخاصة
   String _cleanText(String text) {
-    return text
-        .replaceAll(
-            RegExp(r'[\u06DD\uFD3E\uFD3F\uFDF0-\uFDFF\uFC00-\uFC1F﴾﴿]'), '')
-        .trim();
+    return QuranTextUtils.sanitizeAyahText(text);
+  }
+
+  Future<void> _toggleVoiceTracking() async {
+    if (_ayahs == null || _ayahs!.isEmpty) return;
+
+    if (_recitationTrackingService.isListening) {
+      await _recitationTrackingService.stopTracking();
+      if (!mounted) return;
+      setState(() {});
+      return;
+    }
+
+    final started = await _recitationTrackingService.startTracking(
+      ayahs: _ayahs!,
+      startIndex: _autoTrackStartIndex,
+      onMatch: (index) {
+        if (!mounted || _ayahs == null) return;
+        final ayah = _ayahs![index];
+        _onAutoTrackAyah(ayah, index);
+      },
+    );
+
+    if (!mounted) return;
+    if (!started) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تعذر بدء التتبع الصوتي. تأكد من إذن الميكروفون.'),
+        ),
+      );
+    }
+    setState(() {});
+  }
+
+  void _onAutoTrackAyah(QuranAyah ayah, int index) {
+    context.read<ReadingProvider>().recordValidatedAyahRead(
+          surahNumber: widget.surah.number,
+          ayahNumber: ayah.ayaNo,
+          dwellSeconds: 6,
+        );
+    context.read<ReadingProvider>().setTemporaryStopMarker(
+          surahNumber: widget.surah.number,
+          ayahNumber: ayah.ayaNo,
+        );
+
+    setState(() {
+      _selectedAyahNumber = ayah.ayaNo;
+      _readAyahs.add(ayah.ayaNo);
+      _autoTrackStartIndex = index;
+    });
+  }
+
+  void _showBookmarksSheet() {
+    if (_bookmarkedAyahs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('لا توجد علامات مرجعية بعد')),
+      );
+      return;
+    }
+
+    final sorted = _bookmarkedAyahs.toList()..sort();
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: ListView.separated(
+            itemCount: sorted.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final ayahNo = sorted[index];
+              final ayah = _ayahs?.firstWhere(
+                (a) => a.ayaNo == ayahNo,
+                orElse: () => QuranAyah(
+                  id: 0,
+                  jozz: 0,
+                  page: 0,
+                  suraNo: widget.surah.number,
+                  suraNameEn: '',
+                  suraNameAr: widget.surah.nameArabic,
+                  ayaNo: ayahNo,
+                  ayaText: '',
+                  ayaTextEmlaey: '',
+                ),
+              );
+
+              return ListTile(
+                leading: const Icon(Icons.bookmark, color: Color(0xFFF57C00)),
+                title: Text('الآية $ayahNo'),
+                subtitle: Text(
+                  ayah != null
+                      ? QuranTextUtils.sanitizeAyahText(ayah.ayaText)
+                          .split(' ')
+                          .take(10)
+                          .join(' ')
+                      : '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  if (ayah != null) {
+                    _onAyahTap(ayah);
+                  }
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 }

@@ -67,11 +67,12 @@ lib/
 │   └── dhikr_provider.dart         # حالة الأذكار
 │
 ├── screens/               # الشاشات
-│   ├── home_screen.dart            # الصفحة الرئيسية
+│   ├── main_navigation_screen.dart # التنقل الرئيسي
+│   ├── enhanced_home_screen.dart   # الصفحة الرئيسية المحسنة
 │   ├── plan_setup_screen.dart      # إعداد الخطة
-│   ├── reading_screen.dart         # شاشة القراءة
-│   ├── dhikr_screen.dart           # شاشة الأذكار
-│   └── statistics_screen.dart      # الإحصائيات
+│   ├── enhanced_reading_screen.dart# شاشة القراءة المحسنة
+│   ├── enhanced_dhikr_screen.dart  # شاشة الأذكار المحسنة
+│   └── enhanced_statistics_screen.dart # الإحصائيات المحسنة
 │
 └── main.dart              # نقطة البداية
 

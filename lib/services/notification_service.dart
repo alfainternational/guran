@@ -146,6 +146,7 @@ class NotificationService {
     required String title,
     required String body,
     required DateTime scheduledTime,
+    bool repeatDaily = false,
     String? payload,
   }) async {
     try {
@@ -177,6 +178,8 @@ class NotificationService {
         androidScheduleMode: await _getScheduleMode(),
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents:
+            repeatDaily ? DateTimeComponents.time : null,
         payload: payload,
       );
     } catch (e) {
@@ -227,6 +230,7 @@ class NotificationService {
       title: title,
       body: body,
       scheduledTime: scheduledDate,
+      repeatDaily: true,
     );
   }
 

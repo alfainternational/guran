@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import '../services/local_quran_service.dart';
 import '../widgets/ayah_number_widget.dart';
+import '../utils/quran_text_utils.dart';
 
 /// Widget لعرض آية واحدة قابلة للتحديد والنقر
 class AyahWidget extends StatelessWidget {
   final QuranAyah ayah;
   final bool isSelected;
   final bool isBookmarked;
+  final bool isRead;
+  final bool isPauseMarked;
+  final bool isManualStop;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -15,6 +19,9 @@ class AyahWidget extends StatelessWidget {
     required this.ayah,
     this.isSelected = false,
     this.isBookmarked = false,
+    this.isRead = false,
+    this.isPauseMarked = false,
+    this.isManualStop = false,
     required this.onTap,
     this.onLongPress,
   });
@@ -29,7 +36,13 @@ class AyahWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? const Color(0xFFE8F5E9)
-              : (isBookmarked ? const Color(0xFFFFF9C4) : Colors.transparent),
+              : isPauseMarked
+                  ? const Color(0xFFFFF3E0)
+                  : (isRead
+                      ? const Color(0xFFE3F2FD)
+                      : (isBookmarked
+                          ? const Color(0xFFFFF9C4)
+                          : Colors.transparent)),
           borderRadius: BorderRadius.circular(8),
           border: isSelected
               ? Border.all(color: const Color(0xFF1B5E20), width: 2)
@@ -46,7 +59,7 @@ class AyahWidget extends StatelessWidget {
                 text: TextSpan(
                   children: [
                     TextSpan(
-                      text: _cleanAyahText(ayah.ayaText),
+                      text: QuranTextUtils.sanitizeAyahText(ayah.ayaText),
                       style: TextStyle(
                         fontFamily: 'Amiri',
                         fontSize: 22,
@@ -86,19 +99,28 @@ class AyahWidget extends StatelessWidget {
                   size: 20,
                 ),
               ),
+            if (isPauseMarked)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(
+                  Icons.pause_circle_filled_rounded,
+                  color: Color(0xFFE65100),
+                  size: 20,
+                ),
+              ),
+            if (isManualStop)
+              const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(
+                  Icons.push_pin_rounded,
+                  color: Color(0xFF5D4037),
+                  size: 18,
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  /// إزالة رموز ترقيم الآيات الخاصة من النص
-  String _cleanAyahText(String text) {
-    // إزالة جميع الرموز Unicode الخاصة بترقيم الآيات والزخارف
-    // النطاق ﰀ-ﰟ (U+FC00 - U+FC1F) ورموز أخرى
-    return text
-        .replaceAll(
-            RegExp(r'[\u06DD\uFD3E\uFD3F\uFDF0-\uFDFF\uFC00-\uFC1F﴾﴿]'), '')
-        .trim();
-  }
 }

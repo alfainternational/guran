@@ -14,11 +14,19 @@ class ReadingProvider with ChangeNotifier {
   UserProgress? _userProgress;
   ReadingSession? _currentSession;
   bool _isReading = false;
+  final Set<String> _validatedAyahReads = {};
+  int? _temporaryStopSurah;
+  int? _temporaryStopAyah;
+  final Set<String> _manualStopMarkers = {};
+  final Set<String> _completedDailySessions = {};
 
   ReadingPlan? get activePlan => _activePlan;
   UserProgress? get userProgress => _userProgress;
   bool get isReading => _isReading;
   ReadingSession? get currentSession => _currentSession;
+  int get validatedAyahReadsCount => _validatedAyahReads.length;
+  int? get temporaryStopSurah => _temporaryStopSurah;
+  int? get temporaryStopAyah => _temporaryStopAyah;
 
   /// تحميل الخطة النشطة
   Future<void> loadActivePlan() async {
@@ -40,6 +48,9 @@ class ReadingProvider with ChangeNotifier {
   Future<void> createPlan({
     required int numberOfDays,
     required PlanType planType,
+    DateTime? startDate,
+    int? targetDailyMinutes,
+    int sessionsPerDay = 1,
   }) async {
     // إلغاء تنشيط الخطة الحالية
     if (_activePlan != null) {
@@ -49,9 +60,11 @@ class ReadingProvider with ChangeNotifier {
 
     // إنشاء خطة جديدة
     _activePlan = ReadingPlan.create(
-      startDate: DateTime.now(),
+      startDate: startDate ?? DateTime.now(),
       numberOfDays: numberOfDays,
       planType: planType,
+      targetDailyMinutes: targetDailyMinutes,
+      sessionsPerDay: sessionsPerDay,
     );
 
     await _db.saveReadingPlan(_activePlan!);
@@ -88,6 +101,7 @@ class ReadingProvider with ChangeNotifier {
       surahsRead: [],
     );
     _isReading = true;
+    _validatedAyahReads.clear();
     notifyListeners();
   }
 
@@ -95,8 +109,16 @@ class ReadingProvider with ChangeNotifier {
   Future<void> endReadingSession({
     required int ayahsRead,
     required List<int> surahsRead,
+    bool enforceQualityCheck = true,
   }) async {
     if (_currentSession == null || !_isReading) return;
+
+    if (enforceQualityCheck) {
+      final issue = validateSessionQuality(ayahsRead: ayahsRead);
+      if (issue != null) {
+        throw StateError(issue);
+      }
+    }
 
     _currentSession = ReadingSession(
       id: _currentSession!.id,
@@ -117,6 +139,7 @@ class ReadingProvider with ChangeNotifier {
     }
 
     _isReading = false;
+    _validatedAyahReads.clear();
     notifyListeners();
 
     // إرسال رسالة تحفيزية
@@ -124,6 +147,92 @@ class ReadingProvider with ChangeNotifier {
       MessageTrigger.afterReading,
     );
     await _notificationService.showMotivationalNotification(message);
+  }
+
+  /// تسجيل آية مقروءة بزمن منطقي داخل الجلسة النشطة.
+  void recordValidatedAyahRead({
+    required int surahNumber,
+    required int ayahNumber,
+    required int dwellSeconds,
+  }) {
+    if (!_isReading) return;
+    if (dwellSeconds < 4) return;
+
+    final key = '$surahNumber:$ayahNumber';
+    if (_validatedAyahReads.add(key)) {
+      notifyListeners();
+    }
+  }
+
+  /// حفظ علامة توقف مؤقتة (آخر موضع قراءة موثّق).
+  void setTemporaryStopMarker({
+    required int surahNumber,
+    required int ayahNumber,
+  }) {
+    _temporaryStopSurah = surahNumber;
+    _temporaryStopAyah = ayahNumber;
+    notifyListeners();
+  }
+
+  /// إضافة/إزالة علامة توقف يدوية على آية.
+  void toggleManualStopMarker({
+    required int surahNumber,
+    required int ayahNumber,
+  }) {
+    final key = '$surahNumber:$ayahNumber';
+    if (_manualStopMarkers.contains(key)) {
+      _manualStopMarkers.remove(key);
+    } else {
+      _manualStopMarkers.add(key);
+    }
+    notifyListeners();
+  }
+
+  bool isManualStopMarker({
+    required int surahNumber,
+    required int ayahNumber,
+  }) {
+    return _manualStopMarkers.contains('$surahNumber:$ayahNumber');
+  }
+
+  /// جلسات الورد اليومية (بعد التقسيم).
+  List<int> getTodaySessionMinutes() {
+    final portion = getTodayPortion();
+    if (portion == null) return const [];
+    return portion.sessionMinutes;
+  }
+
+  bool isDailySessionCompleted(int dayNumber, int sessionIndex) {
+    if (_activePlan == null) return false;
+    final key = '${_activePlan!.id}:$dayNumber:$sessionIndex';
+    return _completedDailySessions.contains(key);
+  }
+
+  void toggleDailySessionCompletion(int dayNumber, int sessionIndex) {
+    if (_activePlan == null) return;
+    final key = '${_activePlan!.id}:$dayNumber:$sessionIndex';
+    if (_completedDailySessions.contains(key)) {
+      _completedDailySessions.remove(key);
+    } else {
+      _completedDailySessions.add(key);
+    }
+    notifyListeners();
+  }
+
+  /// التحقق من جودة الجلسة حتى لا تُحسب القراءة السريعة جدًا كإنجاز مكتمل
+  String? validateSessionQuality({required int ayahsRead}) {
+    if (_currentSession == null) return 'لا توجد جلسة قراءة نشطة';
+    if (ayahsRead <= 0) return 'أدخل عدد آيات صحيح';
+
+    final elapsedSeconds =
+        DateTime.now().difference(_currentSession!.startTime).inSeconds;
+    final minRequiredSeconds = (ayahsRead * 5).clamp(60, 3600);
+
+    if (elapsedSeconds < minRequiredSeconds) {
+      return 'مدة الجلسة قصيرة جدًا مقارنة بعدد الآيات. '
+          'الحد الأدنى المقترح: ${minRequiredSeconds ~/ 60} دقيقة.';
+    }
+    return null;
   }
 
   /// تحديث التقدم

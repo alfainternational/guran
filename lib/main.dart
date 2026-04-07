@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'screens/home_screen.dart';
-import 'screens/reading_screen.dart';
-import 'screens/dhikr_screen.dart';
-import 'screens/statistics_screen.dart';
 import 'screens/plan_setup_screen.dart';
 import 'services/notification_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
@@ -16,11 +12,10 @@ import 'providers/dhikr_provider.dart';
 import 'providers/profile_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/gamification_provider.dart';
-import 'screens/settings_screen.dart';
 import 'screens/enhanced_settings_screen.dart';
-import 'screens/onboarding_screen.dart';
 import 'screens/enhanced_onboarding_screen.dart';
 import 'screens/enhanced_home_screen.dart';
+import 'screens/enhanced_reading_screen.dart';
 import 'screens/main_navigation_screen.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'models/quran_data.dart';
@@ -115,7 +110,7 @@ class _KhatmatiAppState extends State<KhatmatiApp> {
             routes: {
               '/plan': (context) => const PlanSetupScreen(),
               '/plan-setup': (context) => const PlanSetupScreen(),
-              '/reading': (context) => const ReadingScreen(),
+              '/reading': (context) => const EnhancedReadingScreen(),
               '/settings': (context) => const EnhancedSettingsScreen(),
               '/onboarding': (context) => const EnhancedOnboardingScreen(),
               '/home': (context) => const EnhancedHomeScreen(),
@@ -189,58 +184,6 @@ class RootHandler extends StatelessWidget {
 
         return const MainNavigationScreen();
       },
-    );
-  }
-}
-
-/// الواجهة الرئيسية مع التنقل السفلي
-class MainNavigator extends StatefulWidget {
-  const MainNavigator({super.key});
-
-  @override
-  State<MainNavigator> createState() => _MainNavigatorState();
-}
-
-class _MainNavigatorState extends State<MainNavigator> {
-  int _currentIndex = 0;
-
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    ReadingScreen(),
-    DhikrScreen(),
-    StatisticsScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'الرئيسية',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.menu_book_rounded),
-            label: 'القراءة',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.format_quote_rounded),
-            label: 'الأذكار',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_rounded),
-            label: 'الإحصائيات',
-          ),
-        ],
-      ),
     );
   }
 }
